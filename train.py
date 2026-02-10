@@ -22,7 +22,6 @@ from model.ema import ExponentialMovingAverage, save_ema_snapshot, save_model_sn
 from progressive import PhasedMasking, mdm_loss_fn
 from eval.sudoku_eval import evaluate_ddp_sudoku
 from eval.gsm8k_eval import evaluate_ddp_gsm8k
-from reweighting import get_weights
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -72,7 +71,7 @@ def evaluate_ddp(model, cfg, device, rank: int, world_size: int, sampling):
         raise ValueError(f"Invalid dataset: {cfg.data.dataset}")
 
 # mdm loss implementation
-def mdm_loss(model, input_ids, mask_id: int, reweighting: Optional[str] = None, prompt_mask: Optional[torch.Tensor] = None, arm_init: bool = False):
+def mdm_loss(model, input_ids, mask_id: int, prompt_mask: Optional[torch.Tensor] = None, arm_init: bool = False):
     # sample integer uniformly for each batch from [1,L]
     # prompt_mask (boolean mask): 1 for prompt
     if prompt_mask is None:
@@ -91,15 +90,13 @@ def mdm_loss(model, input_ids, mask_id: int, reweighting: Optional[str] = None, 
     logits = model(masked_input)
 
     # calculate (reweighted) loss
-    _weights = get_weights(B, device, num_mask.float(), L_eff.float(), reweighting)
-    weights = _weights.expand_as(mask_indices) 
     num_mask = num_mask.float().expand_as(mask_indices)
 
     if arm_init:
         ce = F.cross_entropy(logits[:, :-1, :][mask_indices[:, 1:]], input_ids[:, 1:][mask_indices[:, 1:]], reduction="none")
     else:
         ce = F.cross_entropy(logits[mask_indices], input_ids[mask_indices], reduction="none")
-    loss = weights[mask_indices] * ce / num_mask[mask_indices]
+    loss = ce / num_mask[mask_indices]
     return loss.sum() / B
 
 def arm_loss(
@@ -165,7 +162,7 @@ def val_loss_ddp(model, val_loader, mask_id: int, device, rank: int, world_size:
                 if strategy == "arm":
                     loss = arm_loss(model, x0, eos_id=eos_id, prompt_mask=pm)
                 elif strategy in ["progressive", "standard"]:
-                    loss = mdm_loss(model, x0, mask_id, reweighting = None, prompt_mask = pm, arm_init=arm_init) # no reweighting for validation
+                    loss = mdm_loss(model, x0, mask_id, prompt_mask = pm, arm_init=arm_init) # no reweighting for validation
                 else:
                     raise ValueError(f"Unknown strategy: {strategy}")
             B = x0.shape[0]
@@ -390,7 +387,7 @@ def main(cfg: DictConfig):
                     batch = itr
                     input_ids = batch["labels"].to(device)
                     prompt_mask = batch["prompt_mask"].to(device) if "prompt_mask" in batch else None
-                    loss = mdm_loss(model, input_ids, mask_id, reweighting = train_cfg.reweighting, prompt_mask = prompt_mask, arm_init=model_config.predict_next_token)
+                    loss = mdm_loss(model, input_ids, mask_id, prompt_mask = prompt_mask, arm_init=model_config.predict_next_token)
                 elif strategy == "arm":
                     batch = itr
                     input_ids = batch["labels"].to(device)
