@@ -13,7 +13,6 @@ model:
 training:
   strategy: "block"
   block_size: 256
-  reweighting: "none"
   eos_id: 151643
   data_ratio: 1.0
   learning_rate: 3e-4

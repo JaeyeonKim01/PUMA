@@ -1,6 +1,5 @@
 from typing import List, Tuple, Optional
 from torch.utils.data import DataLoader
-from reweighting import get_weights, build_intervals_uneven, build_intervals_uneven_hard_coded
 import torch
 import math
 
@@ -8,7 +7,7 @@ import math
 # helper function
 # -----------------------------------------
 
-def mdm_loss_fn(log_probs: torch.Tensor, x0: torch.Tensor, xt: torch.Tensor, mask_id: int, prompt_mask: torch.Tensor, reweighting: Optional[str] = None, arm_init: bool = False) -> torch.Tensor:
+def mdm_loss_fn(log_probs: torch.Tensor, x0: torch.Tensor, xt: torch.Tensor, mask_id: int, prompt_mask: torch.Tensor, arm_init: bool = False) -> torch.Tensor:
     """
     compute the MDM (reweighted) loss with the given probs 
     the progessive masking strategy requires log probs, so we cannot use the CE loss directly
@@ -34,9 +33,7 @@ def mdm_loss_fn(log_probs: torch.Tensor, x0: torch.Tensor, xt: torch.Tensor, mas
     per_seq_loss = (nll * masked).sum(dim = 1, keepdim=True)
 
     # calculate the weights per seq
-    weights = get_weights(B, log_probs.device, num_mask, L_eff.float(), reweighting)
-
-    return (weights * per_seq_loss / num_mask).sum() / B
+    return (per_seq_loss / num_mask).sum() / B
 
 def build_intervals(K : int) -> List[Tuple[float, float]]:
     """
@@ -93,7 +90,7 @@ class PhasedMasking:
         * if a seq goes through all stages, we refill it with a new sequence from the train loader
     """
 
-    def __init__(self, train_loader: DataLoader, batch_size: int, mask_id: int, K: int, device: torch.device, L: int, mode: str = "standard", interval_change: bool = False, confidence_threshold: Optional[float] = None, eos_id: Optional[int] = None):
+    def __init__(self, train_loader: DataLoader, batch_size: int, mask_id: int, K: int, device: torch.device, L: int, mode: str = "standard", confidence_threshold: Optional[float] = None, eos_id: Optional[int] = None):
         self.train_loader = train_loader
         self.batch_size = batch_size
         self.mask_id = mask_id
@@ -101,17 +98,12 @@ class PhasedMasking:
         self.device = device
         self.L = L
         self.mode = mode
-        self.interval_change = interval_change
         self.eos_id = eos_id
         self.confidence_threshold = confidence_threshold
         assert mode in ["standard" , "confidence_collapse"], "invalid/deprecated mode"
 
         # build intervals
-        # NOTE: we current do not use the uneven interval option
-        if interval_change:
-            self.intervals = build_intervals_uneven_hard_coded(K)
-        else:
-            self.intervals = build_intervals(K)
+        self.intervals = build_intervals(K)
 
         # cache interval values as tensors
         self.lower = torch.tensor([a for (a,b) in self.intervals] , device=device , dtype=torch.float)
@@ -145,10 +137,7 @@ class PhasedMasking:
         update K and corresponding intervals.
         """
         self.K = new_k
-        if self.interval_change:
-            self.intervals = build_intervals_uneven(new_k)
-        else:
-            self.intervals = build_intervals(new_k)
+        self.intervals = build_intervals(new_k)
 
         # cache interval values as tensors
         self.lower = torch.tensor([a for (a,b) in self.intervals] , device=self.device , dtype=torch.float)

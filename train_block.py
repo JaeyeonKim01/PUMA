@@ -30,7 +30,6 @@ from progressive import mdm_loss_fn
 from progressive_block import ProgressiveBlock
 from eval.sudoku_eval import evaluate_ddp_sudoku
 from eval.gsm8k_eval import evaluate_ddp_gsm8k
-from reweighting import get_weights
 from train import parse_args, setup_ddp, evaluate_ddp_dict, grad_norm, evaluate_ddp,  parse_k_schedule_increasing
 
 

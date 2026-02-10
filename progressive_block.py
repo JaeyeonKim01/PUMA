@@ -21,7 +21,7 @@ class ProgressiveBlock:
         # samely, we refill a new seq once a given seq goes through all stages
     """
 
-    def __init__(self, train_loader: DataLoader, batch_size: int, block_size: int, mask_id: int, K: int, device: torch.device, L: int, mode: str = "standard", interval_change: bool = False, confidence_threshold: Optional[float] = None, eos_id: Optional[int] = None):
+    def __init__(self, train_loader: DataLoader, batch_size: int, block_size: int, mask_id: int, K: int, device: torch.device, L: int, mode: str = "standard", confidence_threshold: Optional[float] = None, eos_id: Optional[int] = None):
         self.block_size = block_size
         assert L % block_size == 0, "max_len must be divisible by block_size"
         assert mode in ["standard", "confidence_collapse"], "mode must be either standard or confidence_collapse"

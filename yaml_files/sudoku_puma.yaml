@@ -11,10 +11,8 @@ model:
 
 training:
   strategy: "progressive"
-  reweighting: "none"
   confidence_threshold: 0.9
   mode: "standard" # [standard, x0, mixed]
-  interval_change: false
   K: 8
   data_ratio: 1.0
   learning_rate: 3e-4
