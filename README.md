@@ -1,6 +1,8 @@
-<p align="center">
-  <img src="figure/title.svg" alt="PUMA title" width="100%">
-</p>
+<div align="center">
+
+# PUMA: Progressive Unmasking for Accelerated Masked Diffusion Training
+
+</div>
 
 ---
 
