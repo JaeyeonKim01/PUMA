@@ -17,6 +17,11 @@ Instead of training on randomly masked sequences, PUMA aligns that training- and
 ```bash
 # Create and activate conda environment
 conda env create -f environment.yml
+```
+
+The slurm training script (see below) activates the environment automatically. To activate manually, run:
+
+```bash
 conda activate puma
 ```
 
