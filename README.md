@@ -1,21 +1,18 @@
 <div align="center">
 
-# PUMA: Progressive Unmasking for Accelerated Masked Diffusion Training
+# <span style="color:#4169E1;">PUMA</span>: Progressive Unmasking for Accelerated Masked Diffusion Training
 
-The codebase for paper *Stop Training for the Worst: Progressive Unmasking Accelerates Masked Diffusion Training*
+(<b><span style="color:#4169E1;">P</span></b>rogressive <b><span style="color:#4169E1;">U</span></b>nmasking for Accelerated <b><span style="color:#4169E1;">M</span></b>asked Diffusion Training <b><span style="color:#4169E1;">A</span></b>)
 
 </div>
 
-<div align="center">
-  <img src="figure/main_fig.png" width="85%" alt="PUMA overview">
-</div>
 
 ---
 
 ## Overview
 
 **PUMA (Progressive Unmasking)** is a simple modification to the forward process of **Masked Diffusion Models (MDMs)**.
-Instead of training on randomly masked sequences, PUMA aligns that training- and inference- time masking patterns, thereby focusingon inference-aligned masks and speeding up training.
+Instead of training on randomly masked sequences, PUMA aligns that training- and inference- time masking patterns, thereby focusingon inference-aligned masks and speeding up training. 
 
 ---
 ## Quick Start
@@ -58,6 +55,7 @@ We provide one config each for PUMA and the baseline for the following three set
 
 Training logs and checkpoints are saved according to the paths specified in your config file. The training file also logs results to wandb.
 
+---
 
 ## Explanation of each files
 - `train.py`: unified file that handles the MDM pretraining (includes the vanilla MDM pretraining). Self-includes the evaluation accuracy logging.
