@@ -1,10 +1,16 @@
 <div align="center">
+  <h1>
+    <span style="color:#4169E1;">PUMA</span>: Progressive Unmasking for Accelerated Masked Diffusion Training
+  </h1>
 
-# <span style="color:#4169E1;">PUMA</span>: Progressive Unmasking for Accelerated Masked Diffusion Training
-
-(<b><span style="color:#4169E1;">P</span></b>rogressive <b><span style="color:#4169E1;">U</span></b>nmasking for Accelerated <b><span style="color:#4169E1;">M</span></b>asked Diffusion Training <b><span style="color:#4169E1;">A</span></b>)
-
+  <p>
+    (<b><span style="color:#4169E1;">P</span></b>rogressive
+    <b><span style="color:#4169E1;">U</span></b>nmasking for
+    Accelerated <b><span style="color:#4169E1;">M</span></b>asked Diffusion
+    Training <b><span style="color:#4169E1;">A</span></b>)
+  </p>
 </div>
+
 
 
 ---
