@@ -1,7 +1,18 @@
 # PUMA
 
-This is the code for PUMA (Progressive Unmasking) from the paper "Stop Training for the Worst: Progressive Unmasking Accelerates Masked Diffusion Training". PUMA is a simple modification of the Masked Diffusion Model (MDM) forward process and accelerates MDM pretraining.
+**Progressive Unmasking for Accelerated Masked Diffusion Training**
 
+*Stop Training for the Worst: Progressive Unmasking Accelerates Masked Diffusion Training*
+
+---
+[PUMA overview](figure/main_fig.pdf)
+
+## Overview
+
+**PUMA (Progressive Unmasking)** is a simple modification to the forward process of **Masked Diffusion Models (MDMs)**.
+Instead of training on randomly masked sequences, PUMA aligns that training- and inference- time masking patterns, thereby focusingon inference-aligned masks and speeding up training.
+
+---
 ## Quick Start
 
 ### 1. Install Environment
