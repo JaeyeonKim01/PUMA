@@ -1,6 +1,6 @@
 # PUMA
 
-This is the code for PUMA (Progressive Unmasking) for the paper "Stop Training for the Worst: Progressive Unmasking Accelerates Masked Diffusion Training". PUMA gives a simple modification on the Masked Diffusion Models (MDMs) forward process and accelerates the pretraining.
+This is the code for PUMA (Progressive Unmasking) from the paper "Stop Training for the Worst: Progressive Unmasking Accelerates Masked Diffusion Training". PUMA is a simple modification of the Masked Diffusion Model (MDM) forward process and accelerates MDM pretraining.
 
 ## Quick Start
 
@@ -15,7 +15,7 @@ conda activate puma
 ### 2. Data preparation
 We provide PUMA codebases for Sudoku and TinyGSM. 
 
-- Sudoku: Download *sudoku-train-data.npy* and *sudoku-test-data.npy* and put them in the `data/sudoku_new` folder. 
+- Sudoku: Download *sudoku-train-data.npy* and *sudoku-test-data.npy* from [here](https://drive.google.com/drive/folders/1TluiZjYl-zLdbxjVmhfWl-WyX_OvD7UW) and put them in the `data/sudoku_new` folder. 
 
 - TinyGSM: Run `data/tiny_gsm.py` that gives you files `labels.bin`, `meta.json`, and `prompt_mask.bin` for pretraining in the desired `out_dir` directory.
 
@@ -35,6 +35,7 @@ Config files are located in `yaml_files/`. Edit these YAML files to adjust:
 - Training hyperparameters  
 - Dataset settings
 - Logging options
+
 We provide one config each for PUMA and the baseline for the following three settings: Sudoku, TinyGSM (standard), TinyGSM (block diffusion).
 
 ### 5. Monitoring
@@ -49,3 +50,15 @@ Training logs and checkpoints are saved according to the paths specified in your
 - `progressive_block.py`: PUMA implementation for block diffusion. 
 - `model`: our Qwen2-style attention implementations
 - `eval`: eval util functions for Sudoku / TinyGSM
+
+## Citation
+If you find this repository helpful, please consider citing our paper:
+
+```bibtex
+@misc{
+    kim2025puma,
+    title={{S}top {T}raining for the {W}orst: {P}rogressive {U}nmasking {A}ccelerates {M}asked {D}iffusion {T}raining},
+    author={Jaeyeon Kim and Jonathan Geuter and David Alvarez-Melis and Sham Kakade and Sitan Chen},
+    year={2025},
+}
+```
