@@ -10,7 +10,7 @@
 #SBATCH --time=3-00:00:00
 
 conda deactivate
-conda activate your-conda-env-here
+conda activate puma
 module load cuda # if needed
 
 MASTER_HOST=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
