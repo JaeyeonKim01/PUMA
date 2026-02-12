@@ -331,7 +331,6 @@ def main(cfg: DictConfig):
             return PhasedMasking(
                 train_loader, B, mask_id, K, device, L,
                 mode=train_cfg.mode,
-                interval_change=train_cfg.interval_change,
                 confidence_threshold=train_cfg.confidence_threshold,
                 eos_id=train_cfg.eos_id,
             )
