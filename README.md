@@ -70,9 +70,13 @@ If you find this repository helpful, please consider citing our paper:
 
 ```bibtex
 @misc{
-    kim2025puma,
+    kim2026stoptrainingworstprogressive,
     title={{S}top {T}raining for the {W}orst: {P}rogressive {U}nmasking {A}ccelerates {M}asked {D}iffusion {T}raining},
     author={Jaeyeon Kim and Jonathan Geuter and David Alvarez-Melis and Sham Kakade and Sitan Chen},
-    year={2025},
+    year={2026},
+    eprint={2602.10314},
+    archivePrefix={arXiv},
+    primaryClass={cs.LG},
+    url={https://arxiv.org/abs/2602.10314}, 
 }
 ```
