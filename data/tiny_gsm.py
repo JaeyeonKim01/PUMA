@@ -210,5 +210,5 @@ def split_tinygsm(data_dir: str, val_ratio: float = 0.05, seed: int = 2025):
 
 
 if __name__ == "__main__":
-    out_dir = "."
+    out_dir = "data/tiny_gsm"
     pretokenize_tinygsm(out_dir=out_dir)

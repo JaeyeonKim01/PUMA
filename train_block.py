@@ -39,8 +39,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def mdm_loss_block(model, input_ids, block_size, mask_id, reweighting = None, prompt_mask = None):
-    assert reweighting is None, "Reweighting is not supported for the block diffusion training"
+def mdm_loss_block(model, input_ids, block_size, mask_id, prompt_mask = None):
     if prompt_mask is None:
         prompt_mask = torch.zeros_like(input_ids , dtype=torch.bool)
     device = input_ids.device
@@ -107,7 +106,7 @@ def main(cfg: DictConfig):
     torch.cuda.manual_seed(seed)
 
     # ckpt dir
-    ckpt_dir = f"date={datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')}"
+    ckpt_dir = f"ckpts/date={datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')}"
     os.makedirs(ckpt_dir, exist_ok=True)
     if is_main:
         print(f"Checkpoints will be saved to: {ckpt_dir}")
@@ -200,7 +199,6 @@ def main(cfg: DictConfig):
             return ProgressiveBlock(
                 train_loader, B, block_size, mask_id, K, device, L,
                 mode=train_cfg.mode,
-                interval_change=train_cfg.interval_change,
                 confidence_threshold=train_cfg.confidence_threshold,
                 eos_id=train_cfg.eos_id,
             )
@@ -258,7 +256,7 @@ def main(cfg: DictConfig):
                         log_probs = F.log_softmax(logits, dim=-1)
 
                         # loss
-                        loss_blk = mdm_loss_fn(log_probs, x0_e, xt_e, mask_id, prompt_mask = pm_e, reweighting = train_cfg.reweighting)
+                        loss_blk = mdm_loss_fn(log_probs, x0_e, xt_e, mask_id, prompt_mask = pm_e)
                         loss_blk.backward()
                         loss += loss_blk.item()
 

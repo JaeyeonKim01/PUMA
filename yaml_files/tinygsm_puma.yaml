@@ -31,7 +31,6 @@ training:
     - [36, 270000]
     - [39, 300000]
     - [42, 330000]
-  reweighting: "none"
   data_ratio: 1.0
   learning_rate: 3e-4
   weight_decay: 0.01

@@ -9,10 +9,11 @@ model:
   rms_norm_eps: 1e-6
   dropout: 0.0
   tie_lm_head: true # we tie the weights as QWen2 vocab size ~ 150k
+  causal: false      # if true, uses causal attention mask
+  arm_init: "none" # initialize MDM from ARM. Set to "none" to disable
 
 training:
   strategy: "standard"
-  reweighting: "none"
   eos_id: 151643
   data_ratio: 1.0
   learning_rate: 3e-4

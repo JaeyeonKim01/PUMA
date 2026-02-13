@@ -162,7 +162,7 @@ def val_loss_ddp(model, val_loader, mask_id: int, device, rank: int, world_size:
                 if strategy == "arm":
                     loss = arm_loss(model, x0, eos_id=eos_id, prompt_mask=pm)
                 elif strategy in ["progressive", "standard"]:
-                    loss = mdm_loss(model, x0, mask_id, prompt_mask = pm, arm_init=arm_init) # no reweighting for validation
+                    loss = mdm_loss(model, x0, mask_id, prompt_mask = pm, arm_init=arm_init)
                 else:
                     raise ValueError(f"Unknown strategy: {strategy}")
             B = x0.shape[0]
@@ -228,7 +228,7 @@ def main(cfg: DictConfig):
     torch.cuda.manual_seed(seed)
 
     # ckpt dir
-    ckpt_dir = f"date={datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')}"
+    ckpt_dir = f"ckpts/date={datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')}"
     os.makedirs(ckpt_dir, exist_ok=True)
     if is_main:
         print(f"Checkpoints will be saved to: {ckpt_dir}")
@@ -381,7 +381,7 @@ def main(cfg: DictConfig):
                     xt = pool.current_batch()
                     logits = model(xt)
                     log_probs = F.log_softmax(logits, dim=-1)
-                    loss = mdm_loss_fn(log_probs, pool.x0, pool.xt, mask_id, prompt_mask = pool.state['prompt_mask'], reweighting = train_cfg.reweighting, arm_init=model_config.predict_next_token)
+                    loss = mdm_loss_fn(log_probs, pool.x0, pool.xt, mask_id, prompt_mask = pool.state['prompt_mask'], arm_init=model_config.predict_next_token)
                 elif strategy == "standard":
                     batch = itr
                     input_ids = batch["labels"].to(device)

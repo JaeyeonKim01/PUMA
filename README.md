@@ -53,6 +53,12 @@ Config files are located in `yaml_files/`. Edit these YAML files to adjust:
 
 We provide one config each for PUMA and the baseline for the following three settings: Sudoku, TinyGSM (standard), TinyGSM (block diffusion).
 
+Please note that you need to update `wandb.entity` in the config, as well user-specific settings such as `account` and `partition` in `job.sh`, before launching a training run.
+
+To train a block diffusion model, run `train_block.py` instead of `train.py`.
+
+For ARM initialization, first pretrain an ARM model by setting `model.causal=true` in the config, and then initialize an MDM by setting `model.arm_init` in the config, and resetting `model.causal` to `false`.
+
 ### 5. Monitoring
 
 Training logs and checkpoints are saved according to the paths specified in your config file. The training file also logs results to wandb.
@@ -60,7 +66,8 @@ Training logs and checkpoints are saved according to the paths specified in your
 ---
 
 ## Explanation of each files
-- `train.py`: unified file that handles the MDM pretraining (includes the vanilla MDM pretraining). Self-includes the evaluation accuracy logging.
+- `train.py`: unified file that handles the MDM pretraining (includes the vanilla MDM pretraining). Includes evaluation accuracy logging. This file is used for both Sudoku and TinyGSM, but not block diffusion.
+- `train_block.py`: Training file for MDM pretraining in the block diffusion setting.
 - `sampling.py`: sampling for a given MDM
 - `progressive.py`': PUMA via batch streaming implementation. The implementation detail can be found in Section 3.2 and Appendix B.1.
 - `progressive_block.py`: PUMA implementation for block diffusion. 
