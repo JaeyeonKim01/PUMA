@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img src="figure/main_fig.png" alt="PUMA Main Figure" width="700">
+  <img src="figure/fig_tinygsm_with_arm.svg" alt="PUMA Main Figure" width="700">
 </p>
 
 ---
