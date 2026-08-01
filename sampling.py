@@ -137,7 +137,7 @@ def mdm_sampling(model, xt, mask_id, sampling_cfg, device: torch.device = None, 
             unmasking_score = torch.where(mask_indices, probs_top_2[..., 0] - probs_top_2[..., 1], -float('inf'))
         elif confidence == "entropy":
             entropy = (- p * torch.log(p + 1e-10)).sum(dim = -1)
-            unmasking_score = torch.where(mask_indices, entropy, -float('inf'))
+            unmasking_score = torch.where(mask_indices, -entropy, -float('inf'))
         elif confidence == "random":
             raise NotImplementedError("Random confidence sampling strategy yet to be implemented")
         else:

@@ -11,9 +11,11 @@ model:
 
 training:
   strategy: "progressive"
+  diffusion_layout: "full"
   confidence_threshold: 0.9
   mode: "confidence_collapse" # [standard, x0, mixed]
-  K: 8
+  K: 10 # nominal tokens unmasked per stage at reference_length
+  reference_length: 81
   data_ratio: 1.0
   learning_rate: 3e-4
   weight_decay: 0.01

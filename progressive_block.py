@@ -1,27 +1,33 @@
-from progressive import phase_initialize, unmask_from_scores, build_intervals
+from progressive import stage_initialize, unmask_from_scores, build_intervals, num_stages_from_token_quota
 from torch.utils.data import DataLoader
 from typing import Optional, Tuple
 import torch
 import math
 # -----------------------------------------
-# phase initialization for block-wise masking
+# stage initialization for block-wise masking
 # -----------------------------------------
-def phase_initialize_block(B: int, num_blocks: int, K: int, device: torch.device) -> torch.Tensor:
-    # phases[b, k] in {0,...,K-1}, shuffled per block
-    phases = torch.empty((B, num_blocks), device=device, dtype=torch.long)
+def stage_initialize_block(B: int, num_blocks: int, num_stages: int, device: torch.device) -> torch.Tensor:
+    # stages[b, k] in {0,...,num_stages-1}, shuffled per block
+    stages = torch.empty((B, num_blocks), device=device, dtype=torch.long)
     for k in range(num_blocks):
-        phases[:, k] = phase_initialize(B, K, device)  # reuse your helper
-    return phases
+        stages[:, k] = stage_initialize(B, num_stages, device)
+    return stages
 
 class ProgressiveBlock:
     """
     progressive masking for block diffusion training
         * logic is the same as PhasedMasking, but with block-wise masking
-        * K here indicates the number of stages that each block goes through
-        # samely, we refill a new seq once a given seq goes through all stages
+        * K is the nominal number of tokens unmasked per stage at reference_length
+        * num_stages is round(reference_length / K), using half-up rounding
+        * we refill a new seq once all its blocks have gone through all stages
+
+    K is nominal: prompt scaling, target rounding, stochastic interval sampling, and
+    confidence collapse can change the number of tokens actually revealed in a step.
     """
 
-    def __init__(self, train_loader: DataLoader, batch_size: int, block_size: int, mask_id: int, K: int, device: torch.device, L: int, mode: str = "standard", confidence_threshold: Optional[float] = None, eos_id: Optional[int] = None):
+    def __init__(self, train_loader: DataLoader, batch_size: int, block_size: int, mask_id: int, K: int, device: torch.device, L: int, mode: str = "standard", confidence_threshold: Optional[float] = None, eos_id: Optional[int] = None, reference_length: Optional[int] = None):
+        if reference_length is None:
+            raise ValueError("reference_length must be configured explicitly")
         self.block_size = block_size
         assert L % block_size == 0, "max_len must be divisible by block_size"
         assert mode in ["standard", "confidence_collapse"], "mode must be either standard or confidence_collapse"
@@ -30,23 +36,21 @@ class ProgressiveBlock:
         self.batch_size = batch_size
         self.block_size = block_size
         self.mask_id = mask_id
-        self.K = K
         self.device = device
         self.L = L
-        self.num_block = L // block_size
+        self.reference_length = reference_length
+        self.num_blocks = L // block_size
         self.mode = mode
         self.confidence_threshold = confidence_threshold
 
-        self.intervals = build_intervals(K)
-        self.lower = torch.tensor([a for (a,b) in self.intervals] , device=device , dtype=torch.float)
-        self.upper = torch.tensor([b for (a,b) in self.intervals] , device=device , dtype=torch.float)
+        self._configure_stage_partition(K)
 
         self.state = dict(
             t = 0,
-            phase = phase_initialize_block(batch_size, self.num_block, K, device),
-            done = torch.zeros(batch_size, self.num_block, dtype = torch.bool, device = device),
+            stage = stage_initialize_block(batch_size, self.num_blocks, self.num_stages, device),
+            done = torch.zeros(batch_size, self.num_blocks, dtype = torch.bool, device = device),
             prompt_mask = torch.zeros(batch_size, self.L , device = device , dtype = torch.bool),
-            L_eff = torch.zeros(batch_size, self.num_block, device = device, dtype = torch.long),
+            L_eff = torch.zeros(batch_size, self.num_blocks, device = device, dtype = torch.long),
         )
 
         self._reset_iter()
@@ -103,8 +107,8 @@ class ProgressiveBlock:
     @torch.no_grad()
     def _initialize_pool(self):
         B = self.batch_size
-        phases = self.state["phase"]  # (B, nb)
-        x0, xt_block, pm, L_eff, done = self._refill_pool(B, phases)
+        stages = self.state["stage"]  # (B, nb)
+        x0, xt_block, pm, L_eff, done = self._refill_pool(B, stages)
 
         self.x0 = x0
         self.xt_block = xt_block
@@ -113,24 +117,27 @@ class ProgressiveBlock:
         self.state["done"] = done
 
 
+    def _configure_stage_partition(self, K: int):
+        self.K = K
+        self.num_stages = num_stages_from_token_quota(K, self.reference_length)
+        self.intervals = build_intervals(self.num_stages)
+        self.lower = torch.tensor([a for (a,b) in self.intervals], device=self.device, dtype=torch.float)
+        self.upper = torch.tensor([b for (a,b) in self.intervals], device=self.device, dtype=torch.float)
+
     def update_k(self, new_k: int):
         """
-        update K and corresponding intervals.
+        Update the token quota and corresponding internal stage partition.
         """
-        self.K = new_k
-        self.intervals = build_intervals(new_k) 
-        self.lower = torch.tensor([a for (a,b) in self.intervals] , device=self.device , dtype=torch.float)
-        self.upper = torch.tensor([b for (a,b) in self.intervals] , device=self.device , dtype=torch.float)
-
-        self.state["phase"] %= new_k
+        self._configure_stage_partition(new_k)
+        self.state["stage"].remainder_(self.num_stages)
 
     @torch.no_grad()
     def _refill_pool(self, n: int, stages: torch.Tensor):
         """
-        stages: (n , num_block) in [0, K-1]
+        stages: (n, num_blocks) in [0, num_stages-1]
         """
         device = self.device
-        nb = self.num_block
+        nb = self.num_blocks
         bs = self.block_size
 
         x0, pm = self._get_new_seq(n)
@@ -210,19 +217,17 @@ class ProgressiveBlock:
 
         active = (~ self.state["done"][: , block_id]) & (L_eff_blk > 0) # [B] bool
 
-        phase = self.state["phase"][: , block_id]
-        phase_next = (phase + 1) % self.K
-        done_now = (phase_next == 0) & active # [B] bool
-
-        self.state["done"][: , block_id] |= done_now
+        stage = self.state["stage"][: , block_id]
+        next_stage = (stage + 1) % self.num_stages
+        done_on_wrap = (next_stage == 0) & active # [B] bool
 
         # compute target num unmask
-        ratio = self._sample_ratio(phase_next)
+        ratio = self._sample_ratio(next_stage)
         target_unmask = self._sample_target_unmasked(ratio, L_eff_blk)
         current_unmask = ( (~ mask_idx) & (~ pm_blk) ).sum(dim = 1).long()
         to_reveal = (target_unmask - current_unmask).clamp_min(0)
 
-        to_reveal = torch.where(active & (~done_now), to_reveal, torch.zeros_like(to_reveal))
+        to_reveal = torch.where(active & (~done_on_wrap), to_reveal, torch.zeros_like(to_reveal))
 
         # confidence scores
         score = log_probs_prefix[: , s:e , :].max(dim = 2)[0]
@@ -237,14 +242,20 @@ class ProgressiveBlock:
             collapse = (pmax > tau) & (xt_blk == self.mask_id) & (~ pm_blk) & active[: , None]
             xt_blk = torch.where(collapse, x0_blk, xt_blk)
 
-            # re-calculate the phase
+            # re-calculate the stage after confidence-based fast-forwarding
             current_unmask = ( (xt_blk != self.mask_id) & (~ pm_blk) ).sum(dim = 1).long()
             ratio_now = current_unmask.float() / L_eff_blk.clamp_min(1).float()
             boundaries = self.upper[ : -1]
-            phase_next = torch.bucketize(ratio_now, boundaries).clamp_(0, self.K - 1).long()
+            next_stage = torch.bucketize(ratio_now, boundaries).clamp_(0, self.num_stages - 1).long()
+
+        # Confidence collapse can reveal the final token before stage wrap. Mark
+        # that block complete now; finish_step refills the sequence atomically once
+        # all of its blocks are complete.
+        fully_unmasked = ~((xt_blk == self.mask_id) & (~pm_blk)).any(dim=1)
+        self.state["done"][: , block_id] |= done_on_wrap | (active & fully_unmasked)
 
         self.xt_block[:, block_id, :] = xt_blk
-        self.state["phase"][: , block_id] = phase_next
+        self.state["stage"][: , block_id] = next_stage
 
     # -------- finish the step --------
     
@@ -259,7 +270,7 @@ class ProgressiveBlock:
         idx = done_seq.nonzero(as_tuple = False).squeeze(1) # [n_new]
         n_new = idx.numel()
 
-        stages = torch.zeros( (n_new , self.num_block) , device = self.device, dtype = torch.long)
+        stages = torch.zeros( (n_new , self.num_blocks) , device = self.device, dtype = torch.long)
         x0, xt_block, pm, L_eff, done = self._refill_pool(n_new, stages)
 
         self.x0[idx] = x0
@@ -267,8 +278,5 @@ class ProgressiveBlock:
         self.state["prompt_mask"][idx] = pm
         self.state["L_eff"][idx] = L_eff
         self.state["done"][idx] = done
-        self.state["phase"][idx] = 0
-
-        
-        
+        self.state["stage"][idx] = 0
         

@@ -176,13 +176,14 @@ def val_loss_ddp(model, val_loader, mask_id: int, device, rank: int, world_size:
 
     return global_sum / max(int(global_count), 1)
 
-def parse_k_schedule_increasing(k_schedule) -> List[Tuple[int, int]]:
+def parse_k_schedule(k_schedule) -> List[Tuple[int, int]]:
     """
-    Expects k_schedule as an *already increasing* list of [K, step] pairs.
+    Parse an ordered list of [K, step] pairs, where K is tokens per stage.
+
     Validates:
       - each entry is [K, step]
+      - the first entry starts at step 0
       - steps are strictly increasing
-      - (optionally) first step is 0
     Returns list of (K, step) in the same order.
     """
     if k_schedule is None:
@@ -207,6 +208,12 @@ def parse_k_schedule_increasing(k_schedule) -> List[Tuple[int, int]]:
 
         sched.append((K, step))
         prev_step = step
+
+    if sched and sched[0][1] != 0:
+        raise ValueError(
+            f"k_schedule must start at step 0, but its first entry is {sched[0]}. "
+            f"Full schedule: {list(k_schedule)}"
+        )
 
     return sched
 
@@ -308,12 +315,16 @@ def main(cfg: DictConfig):
             print("EMA is enabled with decay:", train_cfg.ema)
 
     strategy = train_cfg.strategy
-    # k schedule for progressive unmasking. If None use fixed K. If "linear", linearly increase the unmasking steps from 1 to K over the training steps.
-    # If a list of integers, use the list as the k_steps. If an integer, use constant interval increase.
+    # K is the nominal token quota per stage. The pool converts it to an internal
+    # stage count using training.reference_length.
     if strategy == "progressive":
-        k_schedule = parse_k_schedule_increasing(getattr(train_cfg, "k_schedule", None))
+        k_schedule = parse_k_schedule(getattr(train_cfg, "k_schedule", None))
         if len(k_schedule) == 0:
             k_schedule = [(train_cfg.K, 0)]
+
+        reference_length = getattr(train_cfg, "reference_length", None)
+        if reference_length is None:
+            raise ValueError("training.reference_length is required for progressive training")
         
         current_k = k_schedule[0][0]
 
@@ -330,6 +341,7 @@ def main(cfg: DictConfig):
             L = model_config.max_position
             return PhasedMasking(
                 train_loader, B, mask_id, K, device, L,
+                reference_length=reference_length,
                 mode=train_cfg.mode,
                 confidence_threshold=train_cfg.confidence_threshold,
                 eos_id=train_cfg.eos_id,
@@ -366,10 +378,10 @@ def main(cfg: DictConfig):
 
         for itr in pbar:
             # update current K if using k schedule
-            if strategy == "progressive" and next_k_idx < len(k_schedule) and global_step == k_schedule[next_k_idx][1]:
+            while strategy == "progressive" and next_k_idx < len(k_schedule) and global_step >= k_schedule[next_k_idx][1]:
                 current_k = k_schedule[next_k_idx][0]
                 if is_main:
-                    print(f"[K-SWITCH] Step {global_step}: K={current_k}")
+                    print(f"[K-SWITCH] Step {global_step}: K={current_k} tokens/stage")
 
                 pool = make_pool(current_k)
                 pool.reset_loader_iter()
