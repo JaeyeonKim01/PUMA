@@ -66,8 +66,6 @@ Config files are located in `yaml_files/`. Edit these YAML files to adjust:
 
 We provide one config each for PUMA and the baseline for the following three settings: Sudoku, TinyGSM (standard), TinyGSM (block diffusion).
 
-For PUMA configs, `training.K` is the nominal number of tokens unmasked per stage at `training.reference_length`. The implementation uses the nearest-integer number of stages, `reference_length / K`; prompt scaling, integer target rounding, interval sampling, and confidence collapse can make the realized number of newly unmasked tokens differ from `K` on an individual update.
-
 Please note that you need to update `wandb.entity` in the config, as well user-specific settings such as `account` and `partition` in `job.sh`, before launching a training run.
 
 To train a block diffusion model, run `train_block.py` instead of `train.py`.
