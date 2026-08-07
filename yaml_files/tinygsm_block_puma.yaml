@@ -14,25 +14,26 @@ model:
 
 training:
   strategy: "progressive"
+  diffusion_layout: "block"
   mode: "confidence_collapse"
   confidence_threshold: 0.9
   eos_id: 151643
-  K: 5
+  K: 51 # nominal tokens unmasked per stage at reference_length
+  reference_length: 256
   block_size: 256
   k_schedule:
-    - [5 , 0]
-    - [8, 30000]
-    - [11, 60000]
-    - [14, 90000]
-    - [17, 120000]
-    - [20, 150000]
-    - [23, 180000]
-    - [26, 210000]
-    - [29, 240000]
-    - [32, 270000]
-    - [35, 300000]
-    - [38, 330000]
-    - [41, 360000]
+    - [51, 0]
+    - [32, 30000]
+    - [23, 60000]
+    - [18, 90000]
+    - [15, 120000]
+    - [13, 150000]
+    - [11, 180000]
+    - [10, 210000]
+    - [9, 240000]
+    - [8, 270000]
+    - [7, 300000]
+    - [6, 360000]
   data_ratio: 1.0
   learning_rate: 3e-4
   weight_decay: 0.01

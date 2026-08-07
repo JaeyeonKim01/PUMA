@@ -11,6 +11,7 @@ model:
 
 training:
   strategy: "standard"
+  diffusion_layout: "full"
   data_ratio: 1.0
   learning_rate: 3e-4
   weight_decay: 0.01

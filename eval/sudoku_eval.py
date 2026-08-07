@@ -63,7 +63,7 @@ def verify_sudoku(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     cond = pred[:, :81]
     sol  = pred[:, 81:]
 
-    clue_ok = ((cond == 0) | (sol == cond)).any(dim=1)   # [B]
+    clue_ok = ((cond == 0) | (sol == cond)).all(dim=1)   # [B]
     sudoku_ok = sudoku_check(sol)                        # [B]
 
     return clue_ok & sudoku_ok 

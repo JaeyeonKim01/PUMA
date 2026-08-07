@@ -35,25 +35,34 @@ def mdm_loss_fn(log_probs: torch.Tensor, x0: torch.Tensor, xt: torch.Tensor, mas
     # calculate the weights per seq
     return (per_seq_loss / num_mask).sum() / B
 
-def build_intervals(K : int) -> List[Tuple[float, float]]:
-    """
-    Build K *ratio* intervals spanning [0, 1].
-    Each interval is [j/K, (j+1)/K], and we will sample ratio ~ Uniform([lo, hi)).
-    """
+def num_stages_from_token_quota(K: int, reference_length: int) -> int:
+    """Convert nominal tokens per stage into the internal number of stages."""
     if K <= 0:
+        raise ValueError(f"K must be positive, got {K}")
+    if reference_length <= 0:
+        raise ValueError(f"reference_length must be positive, got {reference_length}")
+    return max(1, math.floor(reference_length / K + 0.5))
+
+
+def build_intervals(num_stages: int) -> List[Tuple[float, float]]:
+    """
+    Build ``num_stages`` ratio intervals spanning [0, 1].
+    Each interval is [j / num_stages, (j + 1) / num_stages], and we sample
+    ratio ~ Uniform([lo, hi)).
+    """
+    if num_stages <= 0:
         return []
-    return [(j / K, (j + 1) / K) for j in range(K)]
+    return [(j / num_stages, (j + 1) / num_stages) for j in range(num_stages)]
 
 
-def phase_initialize(B: int, K: int, device: torch.device) -> torch.Tensor:
+def stage_initialize(B: int, num_stages: int, device: torch.device) -> torch.Tensor:
     """
-    initialize the phase tensor
+    Initialize stage indices across a batch.
     """
-    base = torch.arange(K, device=device)
-    repeats = math.ceil(B / K)
-    phases = base.repeat(repeats)[:B]
-    phase = phases[torch.randperm(B, device=device)]
-    return phase
+    base = torch.arange(num_stages, device=device)
+    repeats = math.ceil(B / num_stages)
+    stages = base.repeat(repeats)[:B]
+    return stages[torch.randperm(B, device=device)]
 
 
 def unmask_from_scores(scores: torch.Tensor, num_unmask: torch.Tensor, x0: torch.Tensor, xt_format: torch.Tensor) -> torch.Tensor:
@@ -83,37 +92,39 @@ def unmask_from_scores(scores: torch.Tensor, num_unmask: torch.Tensor, x0: torch
 class PhasedMasking:
     """
     our progressive unmasking strategy:
+        * K is the nominal number of tokens unmasked per stage at reference_length
+        * num_stages is round(reference_length / K), using half-up rounding
         * sample target (#unmasked ratio) from the next interval
         * convert the ratio to the number of unmasked tokens as 
             num_unmask_i = round(L_eff * ratio_i)
         * reveal the top-k tokens with the highest logits
         * if a seq goes through all stages, we refill it with a new sequence from the train loader
+
+    K is nominal: prompt scaling, target rounding, stochastic interval sampling, and
+    confidence collapse can change the number of tokens actually revealed in a step.
     """
 
-    def __init__(self, train_loader: DataLoader, batch_size: int, mask_id: int, K: int, device: torch.device, L: int, mode: str = "standard", confidence_threshold: Optional[float] = None, eos_id: Optional[int] = None):
+    def __init__(self, train_loader: DataLoader, batch_size: int, mask_id: int, K: int, device: torch.device, L: int, mode: str = "standard", confidence_threshold: Optional[float] = None, eos_id: Optional[int] = None, reference_length: Optional[int] = None):
+        if reference_length is None:
+            raise ValueError("reference_length must be configured explicitly")
         self.train_loader = train_loader
         self.batch_size = batch_size
         self.mask_id = mask_id
-        self.K = K
         self.device = device
         self.L = L
+        self.reference_length = reference_length
         self.mode = mode
         self.eos_id = eos_id
         self.confidence_threshold = confidence_threshold
         assert mode in ["standard" , "confidence_collapse"], "invalid/deprecated mode"
 
-        # build intervals
-        self.intervals = build_intervals(K)
-
-        # cache interval values as tensors
-        self.lower = torch.tensor([a for (a,b) in self.intervals] , device=device , dtype=torch.float)
-        self.upper = torch.tensor([b for (a,b) in self.intervals] , device=device , dtype=torch.float)
+        self._configure_stage_partition(K)
 
         # state: variable used for training
         B = self.batch_size
         self.state = dict(
             t = 0, # time step
-            phase = phase_initialize(B, K, device),
+            stage = stage_initialize(B, self.num_stages, device),
             prompt_mask = torch.zeros(B, L, dtype = torch.bool, device=device), # prompt mask
             L_eff = torch.zeros(B, dtype = torch.long, device=device), # per-seq effective length
             eos_mask = torch.zeros(B, L, dtype = torch.bool, device=device), # EOS mask
@@ -131,17 +142,20 @@ class PhasedMasking:
     
     def current_batch(self) -> torch.Tensor:
         return self.xt
+
+    def _configure_stage_partition(self, K: int):
+        self.K = K
+        self.num_stages = num_stages_from_token_quota(K, self.reference_length)
+        self.intervals = build_intervals(self.num_stages)
+        self.lower = torch.tensor([a for (a,b) in self.intervals], device=self.device, dtype=torch.float)
+        self.upper = torch.tensor([b for (a,b) in self.intervals], device=self.device, dtype=torch.float)
     
     def update_k(self, new_k: int):
         """
-        update K and corresponding intervals.
+        Update the token quota and corresponding internal stage partition.
         """
-        self.K = new_k
-        self.intervals = build_intervals(new_k)
-
-        # cache interval values as tensors
-        self.lower = torch.tensor([a for (a,b) in self.intervals] , device=self.device , dtype=torch.float)
-        self.upper = torch.tensor([b for (a,b) in self.intervals] , device=self.device , dtype=torch.float)
+        self._configure_stage_partition(new_k)
+        self.state['stage'].remainder_(self.num_stages)
 
     def _sample_ratio(self, stages: torch.Tensor) -> torch.Tensor:
         """
@@ -162,16 +176,15 @@ class PhasedMasking:
         num_unmask = torch.minimum(num_unmask, (L_eff - 1).clamp_min(1)) # [n]
         return num_unmask
 
-    def calculate_phase(self, xt: torch.Tensor) -> int:
+    def calculate_stage(self, xt: torch.Tensor) -> torch.Tensor:
         """
-        calculate the phase based on the current xt
-        return: phase (int)
+        Calculate the internal stage based on the current unmasked ratio.
         """
         current_unmask = (~ self.state['prompt_mask'] & (xt != self.mask_id)).sum(dim=1).long()
         ratio = current_unmask.float() / self.state['L_eff'].clamp_min(1).float()
         boundaries = self.upper[ : -1]
         stage = torch.bucketize(ratio, boundaries)
-        return stage.clamp_(0, self.K - 1).long()
+        return stage.clamp_(0, self.num_stages - 1).long()
         
 
     @torch.no_grad()
@@ -207,8 +220,8 @@ class PhasedMasking:
         initialize the pool of sequences
         """
         B = self.batch_size
-        phases = self.state['phase']
-        new_x0, new_xt, new_masks, new_L_eff = self._refill_pool(B, phases)
+        stages = self.state['stage']
+        new_x0, new_xt, new_masks, new_L_eff = self._refill_pool(B, stages)
         self.x0 = new_x0
         self.xt = new_xt
         self.state['prompt_mask'] = new_masks
@@ -248,20 +261,20 @@ class PhasedMasking:
         B, L, V = log_probs.shape
         device = self.device
 
-        # stages for the current update
-        phase_next = (self.state['phase'] + 1) % self.K
-        replace = (phase_next == 0)
+        # stage indices for the current update
+        next_stage = (self.state['stage'] + 1) % self.num_stages
+        replace_on_wrap = (next_stage == 0)
 
         mask_idx = (self.xt == self.mask_id) # [B, L]
         assert not (mask_idx & self.state['prompt_mask']).any(), "prompt positions should not be masked"
 
-        ratio = self._sample_ratio(phase_next) # [B]
+        ratio = self._sample_ratio(next_stage) # [B]
         num_unmask = self._sample_target_unmasked(ratio, self.state['L_eff'])
         current_num_unmask = (~mask_idx & ~self.state['prompt_mask']).sum(dim=1).long()
         to_reveal = (num_unmask - current_num_unmask).clamp_min(0) # the number of actual tokens to reveal
 
-        # don't update if replace == True
-        to_reveal = torch.where(replace, torch.zeros_like(to_reveal), to_reveal)
+        # don't perform a scheduled reveal on a chain that is about to be replaced
+        to_reveal = torch.where(replace_on_wrap, torch.zeros_like(to_reveal), to_reveal)
 
         # progressive unmasking
         k_max = int(to_reveal.max().item())
@@ -276,11 +289,16 @@ class PhasedMasking:
             update_unmask = (p > tau) & (xt == self.mask_id) & (~ self.state['prompt_mask'])
             xt = torch.where(update_unmask, self.x0, xt)
 
-            # re-calculate the phase
-            phase_next = self.calculate_phase(xt)
+            # re-calculate the stage after confidence-based fast-forwarding
+            next_stage = self.calculate_stage(xt)
+
+        # Confidence collapse can reveal the final masked token before stage wrap.
+        # Replace such chains now so the next loss never receives a clean sequence.
+        fully_unmasked = ~((xt == self.mask_id) & (~self.state['prompt_mask'])).any(dim=1)
+        replace = replace_on_wrap | fully_unmasked
 
         self.xt = xt
-        self.state['phase'] = phase_next
+        self.state['stage'] = next_stage
 
         
         # if a seq goes through all stages, we refill
@@ -293,6 +311,6 @@ class PhasedMasking:
             self.xt[idx] = new_xt
             self.state['prompt_mask'][idx] = new_masks
             self.state['L_eff'][idx] = new_L_eff
-            self.state['phase'][idx] = 0
+            self.state['stage'][idx] = 0
 
         self.state['t'] += 1 # update the time step

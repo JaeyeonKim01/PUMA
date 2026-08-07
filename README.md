@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img src="figure/main_fig.png" alt="PUMA Main Figure" width="700">
+  <img src="figure/fig_tinygsm_with_arm.svg" alt="PUMA Main Figure" width="700">
 </p>
 
 ---
@@ -43,7 +43,7 @@ conda activate puma
 ### 2. Data preparation
 We provide PUMA codebases for Sudoku and TinyGSM. 
 
-- Sudoku: Download *sudoku-train-data.npy* and *sudoku-test-data.npy* from [here](https://drive.google.com/drive/folders/1TluiZjYl-zLdbxjVmhfWl-WyX_OvD7UW) and put them in the `data/sudoku_new` folder. 
+- Sudoku: Download *sudoku-train-data.npy* and *sudoku-test-data.npy* from [here](https://drive.google.com/drive/folders/1VNg6G9faB4FIoFv_9ktspYHURokLKumb?usp=sharing) and put them in the `data/sudoku_new` folder. 
 
 - TinyGSM: Run `data/tiny_gsm.py` that gives you files `labels.bin`, `meta.json`, and `prompt_mask.bin` for pretraining in the desired `out_dir` directory.
 

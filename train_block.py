@@ -30,7 +30,7 @@ from progressive import mdm_loss_fn
 from progressive_block import ProgressiveBlock
 from eval.sudoku_eval import evaluate_ddp_sudoku
 from eval.gsm8k_eval import evaluate_ddp_gsm8k
-from train import parse_args, setup_ddp, evaluate_ddp_dict, grad_norm, evaluate_ddp,  parse_k_schedule_increasing
+from train import parse_args, setup_ddp, evaluate_ddp_dict, grad_norm, evaluate_ddp, parse_k_schedule
 
 
 def parse_args():
@@ -174,12 +174,16 @@ def main(cfg: DictConfig):
             print("EMA is enabled with decay:", train_cfg.ema)
 
     strategy = train_cfg.strategy
-    # k schedule for progressive unmasking. If None use fixed K. If "linear", linearly increase the unmasking steps from 1 to K over the training steps.
-    # If a list of integers, use the list as the k_steps. If an integer, use constant interval increase.
+    # K is the nominal token quota per stage. The pool converts it to an internal
+    # stage count using training.reference_length.
     if strategy == "progressive":
-        k_schedule = parse_k_schedule_increasing(getattr(train_cfg, "k_schedule", None))
+        k_schedule = parse_k_schedule(getattr(train_cfg, "k_schedule", None))
         if len(k_schedule) == 0:
             k_schedule = [(train_cfg.K, 0)]
+
+        reference_length = getattr(train_cfg, "reference_length", None)
+        if reference_length is None:
+            raise ValueError("training.reference_length is required for progressive training")
         
         current_k = k_schedule[0][0]
 
@@ -198,6 +202,7 @@ def main(cfg: DictConfig):
             L = model_config.max_position
             return ProgressiveBlock(
                 train_loader, B, block_size, mask_id, K, device, L,
+                reference_length=reference_length,
                 mode=train_cfg.mode,
                 confidence_threshold=train_cfg.confidence_threshold,
                 eos_id=train_cfg.eos_id,
@@ -236,10 +241,10 @@ def main(cfg: DictConfig):
 
         for itr in pbar:
             # update current K if using k schedule
-            if strategy == "progressive" and next_k_idx < len(k_schedule) and global_step == k_schedule[next_k_idx][1]:
+            while strategy == "progressive" and next_k_idx < len(k_schedule) and global_step >= k_schedule[next_k_idx][1]:
                 current_k = k_schedule[next_k_idx][0]
                 if is_main:
-                    print(f"[K-SWITCH] Step {global_step}: K={current_k}")
+                    print(f"[K-SWITCH] Step {global_step}: K={current_k} tokens/stage")
 
                 pool = make_pool(current_k)
                 pool.reset_loader_iter()

@@ -14,6 +14,7 @@ model:
 
 training:
   strategy: "standard"
+  diffusion_layout: "full"
   eos_id: 151643
   data_ratio: 1.0
   learning_rate: 3e-4

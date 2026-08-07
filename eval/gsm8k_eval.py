@@ -120,6 +120,12 @@ def test_gsm8k_tokenization(mask_id: int):
 
 def evaluate_ddp_gsm8k(model, cfg, device, rank: int, world_size: int, sampling):
     mask_id = cfg.data.mask_id
+    diffusion_layout = getattr(cfg.training, "diffusion_layout", None)
+    if diffusion_layout not in {"full", "block"}:
+        raise ValueError(
+            "training.diffusion_layout must be either 'full' or 'block', "
+            f"got {diffusion_layout!r}"
+        )
 
     # pre-tokenize the gsm8k test set and load it
     gsm8k_test_path = "data/gsm8k_test/test_mdm.json"
@@ -146,8 +152,7 @@ def evaluate_ddp_gsm8k(model, cfg, device, rank: int, world_size: int, sampling)
             e = min(s + batch_size, end)
             batch_X = torch.from_numpy(X[s:e]).long().to(device)
             batch_answers = answers[s:e]
-            # also support the block diffusion training
-            if cfg.training.strategy == "block":
+            if diffusion_layout == "block":
                 block_size = cfg.training.block_size
                 samples_tensor = mdm_sampling_block(model, batch_X, block_size, mask_id, sampling, device)
             elif cfg.training.strategy == "arm":
