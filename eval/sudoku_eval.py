@@ -11,19 +11,26 @@ from tqdm import tqdm
 def evaluate_ddp_sudoku(model, cfg, device, rank: int, world_size: int, sampling):
     val_dir = cfg.validation.val_dir
     mask_id = cfg.data.mask_id
+    single_seq = getattr(cfg.data, "single_seq_sudoku", False)
 
     # get the test Sudoku puzzle and answers
-    test_inputs = os.path.join(val_dir, "test_mdm.npy")
-    test_answers = os.path.join(val_dir, "test_mdm.npy")
+    raw = np.load(os.path.join(val_dir, "test_mdm.npy"))
+    if single_seq:
+        puzzle = raw[:, :81].copy()
+        Y = raw[:, 81:].copy()
+        X = np.where(puzzle == 0, mask_id, puzzle)
+    else:
+        X = raw.copy()
+        X[:, 81:] = mask_id
+        Y = raw.copy()
 
-    X, Y  = np.load(test_inputs), np.load(test_answers)
-    X = X.copy()
-    X[ : , 81:] = cfg.data.mask_id
     N = len(X)
     # for our initial runs, we split the validation set (time efficiency)
     ratio = cfg.validation.ratio
     N_val = int(N * ratio)
     X, Y = X[:N_val], Y[:N_val]
+    if single_seq:
+        puzzle = puzzle[:N_val]
 
     # distribute test cases
     per_rank = math.ceil(N_val / world_size)
@@ -42,7 +49,11 @@ def evaluate_ddp_sudoku(model, cfg, device, rank: int, world_size: int, sampling
             batch_Y = torch.from_numpy(Y[s:e]).long().to(device)
 
             pred = mdm_sampling(model, batch_X, mask_id, sampling, device)
-            matches = verify_sudoku(pred, batch_Y)
+            if single_seq:
+                batch_puzzle = torch.from_numpy(puzzle[s:e]).long().to(device)
+                matches = verify_sudoku_single(pred, batch_puzzle)
+            else:
+                matches = verify_sudoku(pred, batch_Y)
             local_correct += matches.sum().item()
             local_total += batch_Y.shape[0]
 
@@ -53,6 +64,16 @@ def evaluate_ddp_sudoku(model, cfg, device, rank: int, world_size: int, sampling
     global_correct, global_total = tensor.tolist()
 
     return global_correct / global_total
+
+def verify_sudoku_single(pred: torch.Tensor, puzzle: torch.Tensor) -> torch.Tensor:
+    """
+    pred: [B, 81] predicted solution
+    puzzle: [B, 81] original puzzle (0 for empty, 1-9 for clues)
+    returns: [B] bool
+    """
+    clue_ok = ((puzzle == 0) | (pred == puzzle)).all(dim=1)
+    sudoku_ok = sudoku_check(pred)
+    return clue_ok & sudoku_ok
 
 def verify_sudoku(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """
