@@ -227,7 +227,7 @@ def main(cfg: DictConfig):
         print("Hey, we start training!")
         print(f"Training with {world_size} GPUs")
     
-    base_seed = 2026
+    base_seed = int(getattr(cfg.training, "seed", 2026))
     seed = base_seed + rank
     torch.manual_seed(seed)
     random.seed(seed)
@@ -345,6 +345,7 @@ def main(cfg: DictConfig):
                 mode=train_cfg.mode,
                 confidence_threshold=train_cfg.confidence_threshold,
                 eos_id=train_cfg.eos_id,
+                prompt_only_reset=getattr(train_cfg, "prompt_only_reset", False),
             )
         pool = make_pool(current_k)
         next_k_idx = 1
