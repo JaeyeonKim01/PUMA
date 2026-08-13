@@ -228,6 +228,12 @@ def main(cfg: DictConfig):
         print(f"Training with {world_size} GPUs")
     
     base_seed = int(getattr(cfg.training, "seed", 2026))
+    prompt_only_reset = bool(getattr(cfg.training, "prompt_only_reset", False))
+    if is_main:
+        print(
+            f"Training RNG seed: {base_seed}; "
+            f"prompt_only_reset: {prompt_only_reset}"
+        )
     seed = base_seed + rank
     torch.manual_seed(seed)
     random.seed(seed)
@@ -345,7 +351,7 @@ def main(cfg: DictConfig):
                 mode=train_cfg.mode,
                 confidence_threshold=train_cfg.confidence_threshold,
                 eos_id=train_cfg.eos_id,
-                prompt_only_reset=getattr(train_cfg, "prompt_only_reset", False),
+                prompt_only_reset=prompt_only_reset,
             )
         pool = make_pool(current_k)
         next_k_idx = 1
