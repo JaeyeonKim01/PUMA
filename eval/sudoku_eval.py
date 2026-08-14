@@ -11,26 +11,24 @@ from tqdm import tqdm
 def evaluate_ddp_sudoku(model, cfg, device, rank: int, world_size: int, sampling):
     val_dir = cfg.validation.val_dir
     mask_id = cfg.data.mask_id
-    single_seq = getattr(cfg.data, "single_seq_sudoku", False)
 
-    # get the test Sudoku puzzle and answers
+    # The cache stores [puzzle (81), solution (81)], while sampling always
+    # operates in place on one 81-token puzzle grid.
     raw = np.load(os.path.join(val_dir, "test_mdm.npy"))
-    if single_seq:
-        puzzle = raw[:, :81].copy()
-        Y = raw[:, 81:].copy()
-        X = np.where(puzzle == 0, mask_id, puzzle)
-    else:
-        X = raw.copy()
-        X[:, 81:] = mask_id
-        Y = raw.copy()
+    if raw.ndim != 2 or raw.shape[1] != 162:
+        raise ValueError(
+            "Sudoku cache must have shape [N, 162] with "
+            f"[puzzle (81), solution (81)] records; got {raw.shape}"
+        )
+    puzzle = raw[:, :81].copy()
+    X = np.where(puzzle == 0, mask_id, puzzle)
 
     N = len(X)
     # for our initial runs, we split the validation set (time efficiency)
     ratio = cfg.validation.ratio
     N_val = int(N * ratio)
-    X, Y = X[:N_val], Y[:N_val]
-    if single_seq:
-        puzzle = puzzle[:N_val]
+    X = X[:N_val]
+    puzzle = puzzle[:N_val]
 
     # distribute test cases
     per_rank = math.ceil(N_val / world_size)
@@ -46,16 +44,12 @@ def evaluate_ddp_sudoku(model, cfg, device, rank: int, world_size: int, sampling
             s = start + j * batch_size
             e = min(s + batch_size, end)
             batch_X = torch.from_numpy(X[s:e]).long().to(device)
-            batch_Y = torch.from_numpy(Y[s:e]).long().to(device)
+            batch_puzzle = torch.from_numpy(puzzle[s:e]).long().to(device)
 
             pred = mdm_sampling(model, batch_X, mask_id, sampling, device)
-            if single_seq:
-                batch_puzzle = torch.from_numpy(puzzle[s:e]).long().to(device)
-                matches = verify_sudoku_single(pred, batch_puzzle)
-            else:
-                matches = verify_sudoku(pred, batch_Y)
+            matches = verify_sudoku(pred, batch_puzzle)
             local_correct += matches.sum().item()
-            local_total += batch_Y.shape[0]
+            local_total += batch_X.shape[0]
 
     # accumulate succcess rates
     tensor = torch.tensor([local_correct, local_total], dtype=torch.long, device=device)
@@ -65,7 +59,7 @@ def evaluate_ddp_sudoku(model, cfg, device, rank: int, world_size: int, sampling
 
     return global_correct / global_total
 
-def verify_sudoku_single(pred: torch.Tensor, puzzle: torch.Tensor) -> torch.Tensor:
+def verify_sudoku(pred: torch.Tensor, puzzle: torch.Tensor) -> torch.Tensor:
     """
     pred: [B, 81] predicted solution
     puzzle: [B, 81] original puzzle (0 for empty, 1-9 for clues)
@@ -74,23 +68,6 @@ def verify_sudoku_single(pred: torch.Tensor, puzzle: torch.Tensor) -> torch.Tens
     clue_ok = ((puzzle == 0) | (pred == puzzle)).all(dim=1)
     sudoku_ok = sudoku_check(pred)
     return clue_ok & sudoku_ok
-
-def verify_sudoku(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    """
-    pred: [B, 162] where pred[:, :81] are clues/condition, pred[:, 81:] is predicted solution
-    target: [B, 162] where target[:, :81] are clues/condition, target[:, 81:] is ground-truth solution
-    returns: [B] bool
-    """
-    cond = pred[:, :81]
-    sol  = pred[:, 81:]
-
-    clue_ok = ((cond == 0) | (sol == cond)).all(dim=1)   # [B]
-    sudoku_ok = sudoku_check(sol)                        # [B]
-
-    return clue_ok & sudoku_ok 
-    
-
-    
 
 def sudoku_check(pred: torch.Tensor) -> torch.Tensor:
     """

@@ -38,7 +38,6 @@ data:
   dataset: "sudoku"
   data_dir: "data/sudoku_new"
   sudoku_type: "new"
-  single_seq_sudoku: true
   val_ratio: 0.05
   seed: 2026
   mmap: false

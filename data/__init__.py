@@ -31,7 +31,6 @@ def setup_data_bundle(config: DictConfig) -> DatasetBundle:
             val_ratio=config.val_ratio,
             seed=config.seed,
             mmap=config.mmap,
-            single_seq_sudoku=getattr(config, "single_seq_sudoku", False),
         )
     elif config.dataset == "tinygsm":
         train_data, val_data = split_tinygsm(config.data_dir, val_ratio=config.val_ratio, seed=config.seed)
