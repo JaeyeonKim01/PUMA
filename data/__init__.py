@@ -25,7 +25,13 @@ def setup_data_bundle(config: DictConfig) -> DatasetBundle:
     tokenizer = None
 
     if config.dataset == "sudoku":
-        train_data, val_data = split_sudoku(config.data_dir, config.sudoku_type, val_ratio=config.val_ratio, seed=config.seed, mmap=config.mmap)
+        train_data, val_data = split_sudoku(
+            config.data_dir,
+            config.sudoku_type,
+            val_ratio=config.val_ratio,
+            seed=config.seed,
+            mmap=config.mmap,
+        )
     elif config.dataset == "tinygsm":
         train_data, val_data = split_tinygsm(config.data_dir, val_ratio=config.val_ratio, seed=config.seed)
     

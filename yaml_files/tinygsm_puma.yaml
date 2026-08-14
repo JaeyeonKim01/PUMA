@@ -15,6 +15,7 @@ model:
 training:
   strategy: "progressive"
   diffusion_layout: "full"
+  prompt_only_reset: false # preserve the usual stage-0 refill distribution
   mode: "confidence_collapse"
   confidence_threshold: 0.9
   eos_id: 151643
