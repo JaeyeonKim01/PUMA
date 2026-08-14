@@ -12,6 +12,7 @@ model:
 training:
   strategy: "progressive"
   diffusion_layout: "full"
+  prompt_only_reset: true # restart recycled chains from the clue-only puzzle
   confidence_threshold: 0.9
   mode: "confidence_collapse" # [standard, x0, mixed]
   K: 10 # nominal tokens unmasked per stage at reference_length
