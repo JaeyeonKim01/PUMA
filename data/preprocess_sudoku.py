@@ -153,8 +153,12 @@ def sudoku_example_to_162(
 ) -> Tuple[np.ndarray, Dict[str, object]]:
     """
     Convert one dataset example vector to:
-      - seq162: length 162, first 81 prompt, last 81 answers (row-major)
+      - cache_record: puzzle (81) followed by solution (81), row-major
       - meta: puzzle/solution grids + validation info
+
+    The 162 values are a storage record, not a model sequence. At runtime the
+    model always operates on one 81-token grid and uses the puzzle half only to
+    identify fixed clue positions.
 
     Assumes the example is:
       [k, ... 324 ints ...] where 324 = 81*4 (81 quads), split into:
@@ -225,10 +229,10 @@ def sudoku_example_to_162(
     # Validate givens don't violate Sudoku constraints
     givens_ok, givens_violations = check_givens_do_not_violate_sudoku(puzzle)
 
-    # Create sequences (row-major)
+    # Create the cache record (row-major)
     prompt81 = puzzle.reshape(-1)          # 0 for empty
     answer81 = solution.reshape(-1)        # should be 1..9 everywhere (if dataset is complete)
-    seq162 = np.concatenate([prompt81, answer81], axis=0)
+    cache_record = np.concatenate([prompt81, answer81], axis=0)
 
     meta: Dict[str, object] = {
         "givens_count": k,
@@ -239,4 +243,4 @@ def sudoku_example_to_162(
         "layout_givens": {"base": base_g, "row_pos": rpg, "col_pos": cpg, "val_pos": vpg, "strat_pos": spg},
         "layout_empties": {"base": base_e, "row_pos": rpe, "col_pos": cpe, "val_pos": vpe, "strat_pos": spe},
     }
-    return seq162, meta
+    return cache_record, meta

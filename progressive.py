@@ -104,7 +104,7 @@ class PhasedMasking:
     confidence collapse can change the number of tokens actually revealed in a step.
     """
 
-    def __init__(self, train_loader: DataLoader, batch_size: int, mask_id: int, K: int, device: torch.device, L: int, mode: str = "standard", confidence_threshold: Optional[float] = None, eos_id: Optional[int] = None, reference_length: Optional[int] = None):
+    def __init__(self, train_loader: DataLoader, batch_size: int, mask_id: int, K: int, device: torch.device, L: int, mode: str = "standard", confidence_threshold: Optional[float] = None, eos_id: Optional[int] = None, reference_length: Optional[int] = None, prompt_only_reset: bool = False):
         if reference_length is None:
             raise ValueError("reference_length must be configured explicitly")
         self.train_loader = train_loader
@@ -116,6 +116,7 @@ class PhasedMasking:
         self.mode = mode
         self.eos_id = eos_id
         self.confidence_threshold = confidence_threshold
+        self.prompt_only_reset = prompt_only_reset
         assert mode in ["standard" , "confidence_collapse"], "invalid/deprecated mode"
 
         self._configure_stage_partition(K)
@@ -307,6 +308,14 @@ class PhasedMasking:
             idx = replace.nonzero(as_tuple = False).squeeze(1) # [n_new]
             stages = torch.zeros(n_new, device=device, dtype=torch.long)
             new_x0, new_xt, new_masks, new_L_eff = self._refill_pool(n_new, stages)
+            if self.prompt_only_reset:
+                # Restart recycled chains from the actual conditional-generation
+                # input: prompt tokens are clean and every target token is masked.
+                new_xt = torch.where(
+                    new_masks,
+                    new_x0,
+                    torch.full_like(new_x0, self.mask_id),
+                )
             self.x0[idx] = new_x0
             self.xt[idx] = new_xt
             self.state['prompt_mask'][idx] = new_masks

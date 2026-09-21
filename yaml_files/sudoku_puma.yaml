@@ -5,13 +5,14 @@ model:
   num_layers: 8
   num_attention_heads: 8
   num_kv_heads: 8
-  max_position: 162
+  max_position: 81
   rms_norm_eps: 1e-6
   dropout: 0.0
 
 training:
   strategy: "progressive"
   diffusion_layout: "full"
+  prompt_only_reset: true # restart recycled chains from the clue-only puzzle
   confidence_threshold: 0.9
   mode: "confidence_collapse" # [standard, x0, mixed]
   K: 10 # nominal tokens unmasked per stage at reference_length
